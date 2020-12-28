@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 
 import pandas as pd
 import spacy
@@ -13,7 +14,7 @@ stop_words_german = pd.read_csv("./resources/german_stopwords.txt", header=None)
     0
 ].values.tolist()
 
-cv_german = CountVectorizer(max_df=0.75, min_df=3, stop_words=stop_words_german)
+cv_german = CountVectorizer(max_df=0.80, min_df=3, stop_words=stop_words_german)
 
 lemmatizer = spacy.load("de_core_news_lg", disable=["parser"])
 
@@ -75,7 +76,7 @@ def traverse_files():
 def get_topics(articles):
     dtm = cv_german.fit_transform(articles["Article"])
 
-    LDA = LatentDirichletAllocation(n_components=20, random_state=42)
+    LDA = LatentDirichletAllocation(n_components=100, random_state=42)
     LDA.fit(dtm)
 
     topics = []
@@ -110,14 +111,26 @@ def prepend_to_file(articles):
         for tag in articles["topics_german"][row["Topic"]]:
             tags = ", ".join([tags, f'"#{tag}"'])
 
-        tags = "---\ntags: [" + tags[2:] + "]\n---\n"
+        tags = "tags: [" + tags[2:] + "]"
 
         print(tags.rstrip("\r\n") + "\n")
 
         with open(row["File"], "r+") as file:
             content = file.read()
-            file.seek(0, 0)
-            file.write(tags.rstrip("\r\n") + "\n\n" + content)
+
+            # Try to replace the tag
+            regex = r"(^tags\:\s.*$)"
+            result = re.subn(regex, tags, content, 1, re.MULTILINE)
+            print(result[1])
+            # If the tag was overwritten, write the file back
+            # Otherwise prepend tags
+            if result[1] == 1:
+                file.seek(0, 0)
+                file.write(result[0])
+            else:
+                tags = "---\n" + tags + "\n---\n"
+                file.seek(0, 0)
+                file.write(tags.rstrip("\r\n") + "\n\n" + content)
 
 
 if __name__ == "__main__":
