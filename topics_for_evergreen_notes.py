@@ -1,6 +1,8 @@
 import glob
 import os
 import re
+import zipfile
+from datetime import datetime
 
 import pandas as pd
 import spacy
@@ -105,15 +107,15 @@ def get_topics(articles):
 
 def prepend_to_file(articles):
     for index, row in articles["german"].iterrows():
-        print(row["File"])
+        print("\t", row["File"])
 
         tags = ""
         for tag in articles["topics_german"][row["Topic"]]:
-            tags = ", ".join([tags, f'"#{tag}"'])
+            tags = ", ".join([tags, f'"#nlp/{tag}"'])
 
         tags = "tags: [" + tags[2:] + "]"
 
-        print(tags.rstrip("\r\n") + "\n")
+        # print(tags.rstrip("\r\n") + "\n")
 
         with open(row["File"], "r+") as file:
             content = file.read()
@@ -121,16 +123,32 @@ def prepend_to_file(articles):
             # Try to replace the tag
             regex = r"(^tags\:\s.*$)"
             result = re.subn(regex, tags, content, 1, re.MULTILINE)
-            print(result[1])
+
             # If the tag was overwritten, write the file back
             # Otherwise prepend tags
             if result[1] == 1:
+                file.truncate(0)
                 file.seek(0, 0)
                 file.write(result[0])
             else:
                 tags = "---\n" + tags + "\n---\n"
                 file.seek(0, 0)
                 file.write(tags.rstrip("\r\n") + "\n\n" + content)
+
+
+def backup_vault():
+    timestampStr = datetime.now().strftime("%Y%m%d_%H%M%S")
+    zip_file = zipfile.ZipFile(
+        os.getenv("BACKUP_DIR") + "Obsidian_Backup_" + timestampStr + ".zip",
+        "w",
+        zipfile.ZIP_DEFLATED,
+    )
+
+    for root, dirs, files in os.walk(os.getenv("OBSIDIAN_VAULT")):
+        for file in files:
+            zip_file.write(os.path.join(root, file))
+
+    zip_file.close()
 
 
 if __name__ == "__main__":
@@ -141,8 +159,14 @@ if __name__ == "__main__":
     """
     load_dotenv(verbose=True)
 
+    print("Backing Up Vault to", os.getenv("BACKUP_DIR"))
+    backup_vault()
+
+    print("Reading articles from", os.getenv("OBSIDIAN_VAULT"))
     articles = traverse_files()
 
+    print("Building Topic List")
     articles["german"], articles["topics_german"] = get_topics(articles["german"])
 
+    print("Adding generated topics to articles")
     prepend_to_file(articles)
